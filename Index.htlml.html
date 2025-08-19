@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Golf Tracker</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  /* Global Styles */
+  body { margin:0; font-family:'Segoe UI', sans-serif; background:#f8f8f8; color:#333; }
+  h2 { margin:0; font-weight:500; }
+  .header { display:flex; justify-content:space-between; align-items:center; padding:10px 20px; background:#fff; box-shadow:0 2px 4px rgba(0,0,0,0.1); gap:10px; flex-wrap:wrap; }
+  .tabs { display:flex; gap:10px; margin-left:20px; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:thin; }
+  .tabs::-webkit-scrollbar{ height:6px; }
+  .tab { padding:5px 15px; cursor:pointer; border-radius:5px; transition:0.2s; white-space:nowrap; }
+  .tab.active { background:#4CAF50; color:#fff; }
+  .content { padding:20px; }
+
+  /* Performance Trends Layout */
+  .graphs-grid { display:grid; grid-template-columns:repeat(2,1fr); grid-gap:15px; margin-bottom:10px; }
+  .graph-card { background:#fff; padding:10px; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,0.1); display:flex; flex-direction:column; position:relative; }
+  .graph-card canvas { width:100%; height:340px; flex-grow:1; }
+  .graph-title { font-weight:bold; font-size:1rem; margin-bottom:5px; text-align:center; }
+  .graph-toggle { position:absolute; top:10px; right:10px; display:flex; gap:5px; }
+  .toggle-circle { width:15px; height:15px; border-radius:50%; border:1px solid #4CAF50; cursor:pointer; transition:0.2s; }
+  .toggle-circle.active { background:#4CAF50; }
+  .stats-box { display:flex; justify-content:space-around; margin-top:8px; background:#f5f5f5; padding:6px 0; border-radius:5px; font-weight:bold; font-size:0.85rem; flex-wrap:wrap; gap:6px 10px; }
+  .stats-box div { position: relative; cursor:default; }
+
+  /* Buttons */
+  .btn { padding:8px 15px; border:none; border-radius:5px; cursor:pointer; transition:0.2s; }
+  .btn-primary { background:#4CAF50; color:#fff; }
+  .btn-secondary { background:#ccc; color:#333; }
+  .btn:hover { opacity:0.85; }
+
+  /* Overlay & Popup */
+  .overlay { position:fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.3); display:none; justify-content:center; align-items:center; z-index:1000; padding:10px; }
+  .popup { background:#fff; border-radius:10px; padding:5mm; width:95%; max-width:500px; max-height:90%; overflow:auto; box-shadow:0 4px 12px rgba(0,0,0,0.3); transform:scale(0.95); opacity:0; transition:0.2s; display:flex; flex-direction:column; align-items:stretch; }
+  .popup.wide-popup { max-width:1200px; }
+  .popup.show { transform:scale(1); opacity:1; }
+  .popup input, .popup select, .popup button { width:100%; box-sizing:border-box; padding:10px; margin:5px 0; }
+
+  /* Yardages */
+  .yardages-grid { display:grid; grid-template-columns:repeat(7,1fr); grid-gap:15px; }
+  .club-slot { background:#fff; border-radius:10px; padding:10px; box-shadow:0 2px 8px rgba(0,0,0,0.1); text-align:center; cursor:pointer; transition:0.2s; min-height:100px; display:flex; flex-direction:column; justify-content:center; align-items:center; position:relative; }
+  .club-slot:hover { transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,0.15); }
+  .club-slot.empty { border:2px dashed #ccc; background:#eee; color:#666; }
+  .club-name { font-weight:500; }
+  .club-loft { font-size:0.8rem; color:#666; }
+  .club-carry { font-size:1.2rem; font-weight:600; margin:5px 0; }
+  .club-updated { font-size:0.7rem; color:#999; }
+
+  .retired-section { margin-top:30px; padding:10px; background:#f0f0f0; border-radius:10px; }
+  .retired-section h3 { margin:0 0 10px; font-weight:500; }
+  .history-table { width:100%; border-collapse:collapse; margin-top:10px; }
+  .history-table th, .history-table td { padding:6px; border:1px solid #ccc; text-align:center; }
+  #roundsTable td button { margin:0 3px; padding:3px 6px; font-size:0.8rem; }
+  .tooltip { position:absolute; background:#333; color:#fff; padding:3px 6px; border-radius:3px; font-size:0.75rem; white-space:nowrap; display:none; pointer-events:none; z-index:10; }
+
+  /* ======== Responsive tweaks (layout preserved) ======== */
+  /* Big desktops: keep your two-column graphs, tall canvases */
+  @media (min-width:1200px){
+    .graphs-grid { grid-template-columns:repeat(2,1fr); }
+    .graph-card canvas { height:380px; }
+    .yardages-grid { grid-template-columns:repeat(7,1fr); }
+  }
+
+  /* Laptops/tablets landscape */
+  @media (min-width:900px) and (max-width:1199px){
+    .graphs-grid { grid-template-columns:repeat(2,1fr); }
+    .graph-card canvas { height:360px; }
+    .yardages-grid { grid-template-columns:repeat(4,1fr); }
+  }
+
+  /* Tablets portrait, small laptops */
+  @media (min-width:600px) and (max-width:899px){
+    .graphs-grid { grid-template-columns:repeat(2,1fr); }
+    .graph-card canvas { height:320px; }
+    .yardages-grid { grid-template-columns:repeat(3,1fr); }
+  }
+
+  /* Phones */
+  @media (max-width:599px){
+    .content { padding:12px; }
+    .graphs-grid { grid-template-columns:1fr; }
+    .graph-card { padding:10px; }
+    .graph-card canvas { height:260px; }
+    .stats-box { font-size:0.8rem; }
+    .yardages-grid { grid-template-columns:repeat(2,1fr); grid-gap:12px; }
+    .header { padding:10px 12px; }
+    .tabs { margin-left:0; }
+    .popup { padding:12px; max-width:520px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="tabs">
+    <div class="tab active" data-tab="performance">Performance Trends</div>
+    <div class="tab" data-tab="yardages">Yardages</div>
+  </div>
+  <div>
+    <button class="btn btn-primary" id="quickAddBtn">+</button>
+    <button class="btn btn-secondary" id="viewRoundsBtn">View All Rounds</button>
+  </div>
+</div>
+
+<div class="content">
+  <!-- Performance Trends Tab -->
+  <div class="tab-content" id="performance-tab">
+    <div class="graphs-grid">
+      <!-- Graph cards -->
+      <div class="graph-card">
+        <div class="graph-title">Handicap</div>
+        <canvas id="handicapChart"></canvas>
+        <div class="graph-toggle">
+          <div class="toggle-circle active" data-toggle="handicap" data-value="7"></div>
+          <div class="toggle-circle" data-toggle="handicap" data-value="20"></div>
+        </div>
+        <div class="stats-box">
+          <div>Current Hdcp: <span id="currentHandicap">0</span></div>
+          <div>Best Round: <span id="lowestScore">0</span></div>
+        </div>
+      </div>
+      <div class="graph-card">
+        <div class="graph-title">Fairways Hit</div>
+        <canvas id="fairwaysChart"></canvas>
+        <div class="graph-toggle">
+          <div class="toggle-circle active" data-toggle="fairways" data-value="7"></div>
+          <div class="toggle-circle" data-toggle="fairways" data-value="20"></div>
+        </div>
+        <div class="stats-box">
+          <div>Avg Fairway: <span id="avgFairways">0%</span></div>
+          <div>Most Fairway: <span id="bestFairways">0%</span></div>
+        </div>
+      </div>
+      <div class="graph-card">
+        <div class="graph-title">Greens in Regulation</div>
+        <canvas id="girChart"></canvas>
+        <div class="graph-toggle">
+          <div class="toggle-circle active" data-toggle="gir" data-value="7"></div>
+          <div class="toggle-circle" data-toggle="gir" data-value="20"></div>
+        </div>
+        <div class="stats-box">
+          <div>Avg GIR: <span id="avgGIR">0%</span></div>
+          <div>Most GIR: <span id="bestGIR">0%</span></div>
+        </div>
+      </div>
+      <div class="graph-card">
+        <div class="graph-title">Average Putts</div>
+        <canvas id="puttsChart"></canvas>
+        <div class="graph-toggle">
+          <div class="toggle-circle active" data-toggle="putts" data-value="7"></div>
+          <div class="toggle-circle" data-toggle="putts" data-value="20"></div>
+        </div>
+        <div class="stats-box">
+          <div>Avg Putts: <span id="avgPutts">0</span></div>
+          <div>Least Putts: <span id="bestPutts">0</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Yardages Tab -->
+  <div class="tab-content" id="yardages-tab" style="display:none;">
+    <div class="yardages-grid" id="yardagesGrid"></div>
+    <div class="retired-section" id="retiredClubsSection">
+      <h3>Retired Clubs</h3>
+      <table class="history-table" id="retiredClubsTable">
+        <thead>
+          <tr><th>Club</th><th>Loft</th><th>Brand</th><th>Model</th><th>Last Carry</th><th>Date Retired</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Popup -->
+<div class="overlay" id="popupOverlay">
+  <div class="popup" id="popupBox">
+    <h2 id="popupTitle">Add Round</h2>
+
+    <!-- Quick Add Round -->
+    <div id="quickAddForm">
+      <input type="date" id="roundDate">
+      <input type="text" id="courseName" placeholder="Course Name">
+      <input type="number" id="handicap" placeholder="Handicap Index">
+      <input type="number" id="fairways" placeholder="Fairways Hit % (0-100)">
+      <input type="number" id="gir" placeholder="GIR % (0-100)">
+      <input type="number" id="putts" placeholder="Avg Putts per Hole" step="0.01">
+      <input type="number" id="myEG" placeholder="MyEG Score Differential">
+      <input type="number" id="grossScore" placeholder="Gross Score">
+      <select id="holesSelect"><option value="18" selected>18 Holes</option><option value="9">9 Holes</option></select>
+      <button class="btn btn-primary" id="saveRoundBtn">Save Round</button>
+      <button class="btn btn-secondary" id="deleteRoundBtn" style="display:none;">Delete Round</button>
+      <button class="btn btn-secondary" id="cancelRoundBtn">Cancel</button>
+    </div>
+
+    <!-- Club Form -->
+    <div id="clubForm" style="display:none; flex-direction:column;">
+      <input type="text" id="clubName" placeholder="Club Name">
+      <input type="text" id="clubBrand" placeholder="Brand">
+      <input type="text" id="clubModel" placeholder="Model">
+      <input type="number" id="clubLoft" placeholder="Loft (°)">
+      <input type="number" id="clubCarry" placeholder="Carry (yards)">
+      <button class="btn btn-primary" id="saveClubBtn">Save Club</button>
+      <button class="btn btn-secondary" id="cancelClubBtn">Cancel</button>
+    </div>
+
+    <!-- Rounds Table -->
+    <div id="roundsTableContainer" style="display:none; width:100%; max-height:400px; overflow:auto;">
+      <table class="history-table" id="roundsTable">
+        <thead>
+          <tr><th>Date</th><th>Course</th><th>Hdcp</th><th>Fairway</th><th>GIR</th><th>Putts</th><th>Gross</th><th>Holes</th><th>Actions</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="tooltip" id="statsTooltip"></div>
+
+<script>
+/* ----------------- Cached DOM ----------------- */
+const tabs = document.querySelectorAll('.tab');
+const tabContents = document.querySelectorAll('.tab-content');
+const yardagesGrid = document.getElementById('yardagesGrid');
+const popupOverlay = document.getElementById('popupOverlay');
+const popupBox = document.getElementById('popupBox');
+const quickForm = document.getElementById('quickAddForm');
+const roundsTableContainer = document.getElementById('roundsTableContainer');
+const deleteRoundBtn = document.getElementById('deleteRoundBtn');
+const clubForm = document.getElementById('clubForm');
+const popupTitle = document.getElementById('popupTitle');
+
+/* ----------------- Tabs ----------------- */
+tabs.forEach(tab => tab.addEventListener('click', () => {
+  tabs.forEach(t => t.classList.remove('active'));
+  tab.classList.add('active');
+  tabContents.forEach(tc => tc.style.display = tc.id === tab.dataset.tab+'-tab' ? 'block':'none');
+}));
+
+/* ----------------- Popup ----------------- */
+const openPopup = () => { popupOverlay.style.display='flex'; setTimeout(()=>popupBox.classList.add('show'),50); };
+const closePopup = () => { popupBox.classList.remove('show'); setTimeout(()=>popupOverlay.style.display='none',200); };
+popupOverlay.addEventListener('click', e=>{ if(e.target===popupOverlay) closePopup(); });
+
+/* ----------------- Yardages ----------------- */
+const totalSlots = 14;
+let yardagesData = JSON.parse(localStorage.getItem('yardagesData')||'[]');
+let currentClubIndex = null;
+
+function renderYardages(){
+  yardagesGrid.innerHTML='';
+  for(let i=0;i<totalSlots;i++){
+    const club = yardagesData[i];
+    const slot = document.createElement('div');
+    slot.className='club-slot'+(!club?' empty':'');
+    slot.innerHTML = club ? 
+      `<div class="club-name">${club.name}</div><div class="club-loft">${club.loft}°</div><div class="club-carry">${club.carry}y</div><div class="club-updated">${club.updated}</div>`:
+      `<svg width="30" height="30" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19" stroke="#666" stroke-width="2"/><line x1="5" y1="12" x2="19" y2="12" stroke="#666" stroke-width="2"/></svg><div>Tap to Add Club</div>`;
+    slot.addEventListener('click', ()=> openClubPopup(i));
+    yardagesGrid.appendChild(slot);
+  }
+}
+renderYardages();
+
+/* ----------------- Club Popup ----------------- */
+function openClubPopup(index){
+  currentClubIndex = index;
+  const club = yardagesData[index]||{};
+  clubForm.style.display='flex';
+  quickForm.style.display='none';
+  roundsTableContainer.style.display='none';
+  popupTitle.textContent = club.name ? 'Edit Club':'Add Club';
+  ['clubName','clubBrand','clubModel','clubLoft','clubCarry'].forEach(id=>document.getElementById(id).value=club[id.replace('club','').toLowerCase()]||'');
+  openPopup();
+}
+
+/* ----------------- Save / Cancel Club ----------------- */
+document.getElementById('saveClubBtn').addEventListener('click',()=>{
+  const club = {
+    name:document.getElementById('clubName').value.trim(),
+    brand:document.getElementById('clubBrand').value.trim(),
+    model:document.getElementById('clubModel').value.trim(),
+    loft:parseFloat(document.getElementById('clubLoft').value),
+    carry:parseInt(document.getElementById('clubCarry').value),
+    updated:new Date().toLocaleDateString()
+  };
+  if(!club.name || isNaN(club.loft)||isNaN(club.carry)){ alert('Please fill all fields correctly'); return; }
+  yardagesData[currentClubIndex]=club;
+  localStorage.setItem('yardagesData', JSON.stringify(yardagesData));
+  renderYardages();
+  closePopup();
+});
+
+document.getElementById('cancelClubBtn').addEventListener('click',()=>closePopup());
+
+/* ----------------- Rounds ----------------- */
+let rounds = JSON.parse(localStorage.getItem('rounds')||'[]');
+let currentEditIndex = null;
+
+const clearRoundForm = ()=>['roundDate','courseName','handicap','fairways','gir','putts','myEG','grossScore'].forEach(id=>document.getElementById(id).value='');
+
+document.getElementById('quickAddBtn').addEventListener('click',()=>{
+  popupTitle.textContent='Add Round';
+  quickForm.style.display='block';
+  roundsTableContainer.style.display='none';
+  deleteRoundBtn.style.display='none';
+  currentEditIndex=null;
+  clearRoundForm();
+  openPopup();
+});
+
+document.getElementById('saveRoundBtn').addEventListener('click',()=>{
+  const r={
+    date:document.getElementById('roundDate').value,
+    course:document.getElementById('courseName').value.trim(),
+    handicap:parseFloat(document.getElementById('handicap').value),
+    fairways:parseFloat(document.getElementById('fairways').value),
+    gir:parseFloat(document.getElementById('gir').value),
+    putts:parseFloat(document.getElementById('putts').value),
+    myEG:parseFloat(document.getElementById('myEG').value),
+    gross:parseInt(document.getElementById('grossScore').value),
+    holes:parseInt(document.getElementById('holesSelect').value)
+  };
+  if(!r.date||!r.course||Object.values(r).slice(2).some(v=>isNaN(v))||r.putts<1||r.putts>3.5){ alert('Please fill all fields correctly'); return; }
+  if(currentEditIndex!==null) rounds[currentEditIndex]=r; else rounds.push(r);
+  localStorage.setItem('rounds', JSON.stringify(rounds));
+  closePopup();
+  updateStatsAndCharts();
+});
+
+document.getElementById('cancelRoundBtn').addEventListener('click',()=>closePopup());
+deleteRoundBtn.addEventListener('click',()=>{
+  if(currentEditIndex!==null && confirm('Delete this round?')){
+    rounds.splice(currentEditIndex,1);
+    localStorage.setItem('rounds', JSON.stringify(rounds));
+    closePopup();
+    updateStatsAndCharts();
+  }
+});
+
+document.getElementById('viewRoundsBtn').addEventListener('click',()=>{
+  populateRoundsTable();
+  quickForm.style.display='none';
+  roundsTableContainer.style.display='block';
+  popupTitle.textContent='All Rounds';
+  openPopup();
+});
+
+function populateRoundsTable(){
+  const tbody=document.querySelector('#roundsTable tbody');
+  tbody.innerHTML='';
+  rounds.sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach((r,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${r.date}</td><td>${r.course}</td><td>${r.handicap}</td><td>${r.fairways}</td><td>${r.gir}</td><td>${r.putts.toFixed(2)}</td><td>${r.gross}</td><td>${r.holes}</td><td><button class="btn btn-secondary btn-edit" data-index="${i}">Edit</button></td>`;
+    tbody.appendChild(tr);
+  });
+  tbody.querySelectorAll('.btn-edit').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const idx=parseInt(btn.dataset.index);
+      currentEditIndex=idx;
+      const r=rounds[idx];
+      popupTitle.textContent='Edit Round';
+      quickForm.style.display='block';
+      roundsTableContainer.style.display='none';
+      deleteRoundBtn.style.display='inline-block';
+      ['roundDate','courseName','handicap','fairways','gir','putts','myEG','grossScore'].forEach(id=>document.getElementById(id).value=r[id.replace(/([A-Z])/g,'$1').toLowerCase()]||r[id]||'');
+      document.getElementById('holesSelect').value=r.holes;
+      openPopup();
+    });
+  });
+}
+
+/* ----------------- Stats & Charts ----------------- */
+let chartInstances = {};
+const linearRegression = y=>{
+  const n=y.length;if(n===0) return[];const x=[...Array(n).keys()];
+  const sum=(a,b)=>a+b;
+  const sumX=x.reduce(sum,0), sumY=y.reduce(sum,0), sumXY=x.reduce((s,xi,i)=>s+xi*y[i],0), sumX2=x.reduce((s,xi)=>s+xi*xi,0);
+  const slope=(n*sumXY-sumX*sumY)/(n*sumX2-sumX*sumX), intercept=(sumY-slope*sumX)/n;
+  return x.map(xi=>slope*xi+intercept);
+};
+
+function updateStatsAndCharts(numRounds=null){
+  if(rounds.length===0) return;
+  let roundsSlice = rounds.slice();
+  if(numRounds) roundsSlice=[...rounds].sort((a,b)=>new Date(a.date)-new Date(b.date)).slice(-numRounds);
+  roundsSlice.sort((a,b)=>new Date(a.date)-new Date(b.date));
+  const last = roundsSlice[roundsSlice.length-1];
+  document.getElementById('currentHandicap').textContent=last.handicap;
+  const bestRound=roundsSlice.reduce((b,r)=>!b||r.myEG<b.myEG?r:b,null);
+  document.getElementById('lowestScore').textContent=bestRound?bestRound.gross:0;
+  const avg=arr=>Math.round(arr.reduce((a,b)=>a+b,0)/arr.length);
+  const puttsAvg=arr=>(arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(2);
+  document.getElementById('avgFairways').textContent=avg(roundsSlice.map(r=>r.fairways))+'%';
+  document.getElementById('bestFairways').textContent=Math.max(...roundsSlice.map(r=>r.fairways))+'%';
+  document.getElementById('avgGIR').textContent=avg(roundsSlice.map(r=>r.gir))+'%';
+  document.getElementById('bestGIR').textContent=Math.max(...roundsSlice.map(r=>r.gir))+'%';
+  const puttsArr=roundsSlice.map(r=>r.putts);
+  document.getElementById('avgPutts').textContent=puttsAvg(puttsArr);
+  document.getElementById('bestPutts').textContent=Math.min(...puttsArr).toFixed(2);
+
+  const labels=roundsSlice.map(r=>{ const d=new Date(r.date); return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(-2)}`; });
+  const chartData = {handicap:roundsSlice.map(r=>r.handicap), fairways:roundsSlice.map(r=>r.fairways), gir:roundsSlice.map(r=>r.gir), putts:roundsSlice.map(r=>r.putts)};
+  const chartColors={handicap:['#4CAF50','#2E7D32'], fairways:['#FF9800','#E65100'], gir:['#2196F3','#1565C0'], putts:['#9C27B0','#6A1B9A']};
+  const options={responsive:true,plugins:{legend:{display:false}},scales:{x:{ticks:{autoSkip:true,maxTicksLimit:6}}}};
+  Object.keys(chartData).forEach(key=>{
+    const ctx=document.getElementById(key+'Chart');
+    const trend=linearRegression(chartData[key]);
+    if(!chartInstances[key]) chartInstances[key]=new Chart(ctx,{type:'line',data:{labels,datasets:[{label:key,data:chartData[key],borderColor:chartColors[key][0],tension:0.2,fill:false},{label:'Trend',data:trend,borderColor:chartColors[key][1],borderDash:[5,5],tension:0,fill:false,borderWidth:1,pointRadius:0}]},options});
+    else { chartInstances[key].data.labels=labels; chartInstances[key].data.datasets[0].data=chartData[key]; chartInstances[key].data.datasets[1].data=trend; chartInstances[key].update(); }
+  });
+}
+// Default all charts to 20 rounds
+window.addEventListener('load', () => {
+  // Set each graph toggle to 20 rounds active by default
+  document.querySelectorAll('.graph-toggle').forEach(toggleContainer => {
+    toggleContainer.querySelectorAll('.toggle-circle').forEach(circle => circle.classList.remove('active'));
+    const circle20 = toggleContainer.querySelector('.toggle-circle[data-value="20"]');
+    if(circle20) circle20.classList.add('active');
+  });
+  // Update all charts with 20 rounds by default
+  updateStatsAndCharts(20);
+});
+
+/* ----------------- Graph Toggles ----------------- */
+document.querySelectorAll('.graph-toggle').forEach(toggleGroup => {
+  const circles = toggleGroup.querySelectorAll('.toggle-circle');
+  const chartKey = circles[0].dataset.toggle; // use the first circle's data-toggle to know which chart
+
+  circles.forEach(circle => {
+    circle.addEventListener('click', () => {
+      const numRounds = parseInt(circle.dataset.value);
+
+      // Reset only inside this group
+      circles.forEach(c => c.classList.remove('active'));
+      circle.classList.add('active');
+
+      // Only update this chart
+      const ctx = document.getElementById(chartKey + 'Chart');
+      const chartData = rounds
+        .slice(-numRounds)
+        .map(r => r[chartKey]);
+
+      const labels = rounds
+        .slice(-numRounds)
+        .map(r => {
+          const d = new Date(r.date);
+          return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(-2)}`;
+        });
+
+      const trend = (function(y){
+        const n=y.length;if(n===0) return[];const x=[...Array(n).keys()];
+        const sum=(a,b)=>a+b;
+        const sumX=x.reduce(sum,0), sumY=y.reduce(sum,0), sumXY=x.reduce((s,xi,i)=>s+xi*y[i],0), sumX2=x.reduce((s,xi)=>s+xi*xi,0);
+        const slope=(n*sumXY-sumX*sumY)/(n*sumX2-sumX*sumX), intercept=(sumY-slope*sumX)/n;
+        return x.map(xi=>slope*xi+intercept);
+      })(chartData);
+
+      chartInstances[chartKey].data.labels = labels;
+      chartInstances[chartKey].data.datasets[0].data = chartData;
+      chartInstances[chartKey].data.datasets[1].data = trend;
+      chartInstances[chartKey].update();
+
+      // ===== UPDATE STATS BELOW THE CHART =====
+      const roundsSlice = rounds.slice(-numRounds);
+      switch(chartKey){
+        case 'handicap':
+          const lastH = roundsSlice[roundsSlice.length-1];
+          document.getElementById('currentHandicap').textContent = lastH ? lastH.handicap : 0;
+          const bestRound = roundsSlice.reduce((b,r)=>!b||r.myEG<b.myEG?r:b,null);
+          document.getElementById('lowestScore').textContent = bestRound ? bestRound.gross : 0;
+          break;
+        case 'fairways':
+          const avgF = roundsSlice.length ? Math.round(roundsSlice.reduce((a,b)=>a+b.fairways,0)/roundsSlice.length) : 0;
+          document.getElementById('avgFairways').textContent = avgF+'%';
+          document.getElementById('bestFairways').textContent = roundsSlice.length ? Math.max(...roundsSlice.map(r=>r.fairways))+'%' : '0%';
+          break;
+        case 'gir':
+          const avgG = roundsSlice.length ? Math.round(roundsSlice.reduce((a,b)=>a+b.gir,0)/roundsSlice.length) : 0;
+          document.getElementById('avgGIR').textContent = avgG+'%';
+          document.getElementById('bestGIR').textContent = roundsSlice.length ? Math.max(...roundsSlice.map(r=>r.gir))+'%' : '0%';
+          break;
+        case 'putts':
+          const puttsArr = roundsSlice.map(r=>r.putts);
+          const avgP = puttsArr.length ? (puttsArr.reduce((a,b)=>a+b,0)/puttsArr.length).toFixed(2) : 0;
+          document.getElementById('avgPutts').textContent = avgP;
+          document.getElementById('bestPutts').textContent = puttsArr.length ? Math.min(...puttsArr).toFixed(2) : 0;
+          break;
+      }
+    });
+  });
+});
+</script>
+</body>
+</html>
